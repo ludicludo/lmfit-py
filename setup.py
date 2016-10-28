@@ -2,8 +2,13 @@
 # from distutils.core import setup
 from setuptools import setup
 
-import lmfit as lmfit
-import numpy, scipy
+import versioneer
+versioneer.VCS = 'git'
+versioneer.versionfile_source = 'lmfit/_version.py'
+versioneer.versionfile_build = 'lmfit/_version.py'
+versioneer.tag_prefix = ''
+versioneer.parentdir_prefix = 'lmfit-'
+
 
 long_desc = """A library for least-squares minimization and data fitting in
 Python.  Built on top of scipy.optimize, lmfit provides a Parameter object
@@ -25,16 +30,17 @@ questionable. """
 
 
 setup(name = 'lmfit',
-      version = lmfit.__version__,
-      author = 'Matthew Newville',
-      author_email = 'newville@cars.uchicago.edu',
-      url          = 'http://cars9.uchicago.edu/software/python/lmfit/',
-      download_url = 'http://newville.github.com/lmfit-py/',
-      requires = ('numpy', 'scipy'),
+      version = versioneer.get_version(),
+      cmdclass = versioneer.get_cmdclass(),
+      author = 'LMFit Development Team',
+      author_email = 'matt.newville@gmail.com',
+      url          = 'http://lmfit.github.io/lmfit-py/',
+      download_url = 'http://lmfit.github.io//lmfit-py/',
+      install_requires = ['numpy', 'scipy'],
       license = 'BSD',
       description = "Least-Squares Minimization with Bounds and Constraints",
       long_description = long_desc,
-      platforms = ('Windows', 'Linux', 'Mac OS X'),
+      platforms = ['Windows', 'Linux', 'Mac OS X'],
       classifiers=['Intended Audience :: Science/Research',
                    'Operating System :: OS Independent',
                    'Programming Language :: Python',
@@ -43,6 +49,6 @@ setup(name = 'lmfit',
       # test_suite='nose.collector',
       # test_requires=['Nose'],
       package_dir = {'lmfit': 'lmfit'},
-      packages = ['lmfit', 'lmfit.uncertainties'],
+      packages = ['lmfit', 'lmfit.ui', 'lmfit.uncertainties'],
       )
 

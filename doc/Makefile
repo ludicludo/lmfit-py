@@ -6,7 +6,6 @@ SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
 PAPER         =
 BUILDDIR      = _build
-
 INSTALLDIR = /home/newville/public_html/lmfit/
 
 
@@ -15,23 +14,30 @@ PAPEROPT_a4     = -D latex_paper_size=a4
 PAPEROPT_letter = -D latex_paper_size=letter
 ALLSPHINXOPTS   = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 
-.PHONY: help clean html dirhtml pickle json htmlhelp qthelp latex changes linkcheck doctest latexpdf
+.PHONY: help clean html dirhtml pickle json htmlhelp qthelp latex changes linkcheck doctest latexpdf htmlzip
 .PHONY: all install pdf
 
 html:
+	cp sphinx/ext_mathjax.py extensions.py
 	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "html build finished: $(BUILDDIR)/html."
 
+htmlzip: html
+	cp sphinx/ext_pngmath.py extensions.py
+	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/lmfit_doc
+	cd $(BUILDDIR) && zip -pur html/lmfit_doc.zip lmfit_doc
+
 epub:
-	$(SPHINXBUILD) -b epub $(ALLSPHINXOPTS) $(BUILDDIR)/epub
+	cp sphinx/ext_pngmath.py extensions.py
+	$(SPHINXBUILD) -b epub  $(ALLSPHINXOPTS) $(BUILDDIR)/epub
 	cp -pr $(BUILDDIR)/epub/*.epub $(BUILDDIR)/html/.
 
 pdf: latex
 	cd $(BUILDDIR)/latex && make all-pdf
 	cp -pr $(BUILDDIR)/latex/lmfit.pdf $(BUILDDIR)/html/.
 
-all: html epub pdf
+all: html htmlzip epub pdf
 
 install: all
 	cd $(BUILDDIR)/latex && pdflatex lmfit.tex

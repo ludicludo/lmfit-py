@@ -1,23 +1,29 @@
 # Config file for automatic testing at travis-ci.org
 
 language: python
+sudo: false
 
-env:
-    - PYTHON=python PYSUF='' # uses Python 2.7
-    - PYTHON=python3 PYSUF=3 # uses Python 3.2
+python:
+    - 2.7
+    - 3.3
+    - 3.4
+    - 3.5
 
-# command to install dependencies
+before_install:
+    - wget http://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh -O miniconda.sh
+    - bash miniconda.sh -b -p $HOME/miniconda
+    - export PATH="$HOME/miniconda/bin:$PATH"
+    - hash -r
+    - conda config --set always_yes yes --set changeps1 no
+    - conda update -q conda
+    - conda info -a
+
 install:
-  # Deactivate the virtualenv to get fast install of dependencies
-  - deactivate
-  - time sudo apt-get install -qq $PYTHON-numpy $PYTHON-scipy $PYTHON-matplotlib $PYTHON-sphinx $PYTHON-nose $PYTHON-ipython
-  - time sudo pip -q install --use-mirrors uncertainties asteval
-  - sudo python$PYSUF setup.py install
+    - conda create -q -n test_env python=$TRAVIS_PYTHON_VERSION numpy scipy pandas matplotlib nose
+    - source activate test_env
+    - pip install emcee
+    - python setup.py install
+
 script:
-  # Execute the unit tests
-  # For now running nosetests doesn't work.
-  - cd tests
-  - $PYTHON test_covar.py
-  # Generate the docs
-  - cd ../doc
-  - make html
+    - cd tests
+    - nosetests

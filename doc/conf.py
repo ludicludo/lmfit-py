@@ -16,19 +16,41 @@ import sys, os
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.append(os.path.abspath(os.path.join('..', 'lmfit')))
-sys.path.append(os.path.abspath(os.path.join('.', 'ext')))
+sys.path.append(os.path.abspath(os.path.join('.', 'sphinx')))
+sys.path.append(os.path.abspath(os.path.join('.')))
 # -- General configuration -----------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc',
-              'sphinx.ext.todo',
-              'sphinx.ext.coverage',
-              'sphinx.ext.pngmath',
-              'ipython_directive',
-              'ipython_console_highlighting',
-              'numpydoc']
+from extensions import extensions
 
+extensions = [
+    'sphinx.ext.extlinks',
+    'sphinx.ext.autodoc',
+    'sphinx.ext.napoleon',
+    'sphinx.ext.mathjax',
+    ]
+
+autoclass_content = 'both'
+
+try:
+    import IPython.sphinxext.ipython_directive
+    extensions.extend(['IPython.sphinxext.ipython_directive',
+                       'IPython.sphinxext.ipython_console_highlighting'])
+except ImportError:
+    pass
+
+intersphinx_mapping = {'py': ('http://docs.python.org/2', None),
+                       'numpy': ('http://docs.scipy.org/doc/numpy/', None),
+                       'scipy': ('http://docs.scipy.org/doc/scipy/reference/', None),
+                       }
+
+## intersphinx_cache_limit = 10
+
+extlinks = {
+    'scipydoc' : ('http://docs.scipy.org/doc/scipy/reference/generated/%s.html', ''),
+    'numpydoc' : ('http://docs.scipy.org/doc/numpy/reference/generated/numpy.%s.html', ''),
+    }
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -44,13 +66,14 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'lmfit'
-copyright = u'2013, Matthew Newville, The University of Chicago,  Till Stensitzki, Freie Universitat Berlin'
+copyright = u'2014, Matthew Newville, The University of Chicago,  Till Stensitzki, Freie Universitat Berlin'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
+sys.path.insert(0, os.path.abspath('../'))
 try:
     import lmfit
     release = lmfit.__version__
@@ -98,18 +121,8 @@ pygments_style = 'sphinx'
 
 # -- Options for HTML output ---------------------------------------------------
 
-# The theme to use for HTML and HTML Help pages.  Major themes that come with
-# Sphinx are currently 'default' and 'sphinxdoc'.
-#html_theme = 'default'
-
-html_theme = 'sphinxdoc'
-
-# html_theme = 'nature'
-#html_theme = 'agogo'
-# html_theme_options = {'pagewidth':'85em', 'documentwidth':'60em', 'sidebarwidth': '25em',
-#                       # 'headercolor1': '#000080',
-#                       # 'headercolor2': '#0000A0',
-#                       }
+html_theme_path = ['sphinx/theme']
+html_theme = 'lmfitdoc'
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
@@ -117,10 +130,10 @@ html_theme = 'sphinxdoc'
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
 #html_title = None
-html_title = 'Least-Squares Minimization with Constraints for Python'
+html_title = 'Non-Linear Least-Squares Minimization and Curve-Fitting for Python'
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
-html_short_title = 'Least-Squares Minimization with Constraints for Python'
+html_short_title = 'Minimization and Curve-Fitting for Python'
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
@@ -142,23 +155,13 @@ html_static_path = ['_static']
 
 # If true, SmartyPants will be used to convert quotes and dashes to
 # typographically correct entities.
-html_use_smartypants = False # True
+html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
 html_sidebars = {'index': ['indexsidebar.html','searchbox.html']}
 
-# Additional templates that should be rendered to pages, maps page names to
-# template names.
-#html_additional_pages = {}
-
-# If false, no module index is generated.
-#html_use_modindex = True
-html_use_modindex = False
-
-# If false, no index is generated.
-#html_use_index = True
-
-# If true, the index is split into individual pages for each letter.
+html_domain_indices = False
+html_use_index = True
 #html_split_index = False
 
 # If true, links to the reST sources are added to the pages.
@@ -175,36 +178,12 @@ html_show_sourcelink = True
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'lmfitdoc'
 
-
 # -- Options for LaTeX output --------------------------------------------------
-
-# The paper size ('letter' or 'a4').
-#latex_paper_size = 'letter'
-
-# The font size ('10pt', '11pt' or '12pt').
-#latex_font_size = '10pt'
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
   ('index', 'lmfit.tex',
-   'Least-Squares Minimization with Constraints for Python',
-   'Matthew Newville', 'manual'),
+   'Non-Linear Least-Squares Minimization and Curve-Fitting for Python',
+   'Matthew Newville, Till Stensitzki, and others', 'manual'),
 ]
-
-# The name of an image file (relative to this directory) to place at the top of
-# the title page.
-#latex_logo = None
-
-# For "manual" documents, if this is true, then toplevel headings are parts,
-# not chapters.
-#latex_use_parts = False
-
-# Additional stuff for the LaTeX preamble.
-#latex_preamble = ''
-
-# Documents to append as an appendix to all manuals.
-#latex_appendices = []
-
-# If false, no module index is generated.
-#latex_use_modindex = True

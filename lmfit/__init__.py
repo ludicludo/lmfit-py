@@ -1,34 +1,67 @@
 """
-   LMfit-py provides a Least-Squares Minimization routine and
-   class with a simple, flexible approach to parameterizing a
-   model for fitting to data.  Named Parameters can be held
-   fixed or freely adjusted in the fit, or held between lower
-   and upper bounds.  If the separate asteval module has been
-   installed, parameters can be constrained as a simple
-   mathematical expression of other Parameters.
+Lmfit provides a high-level interface to non-linear optimization and curve
+fitting problems for Python. Lmfit builds on Levenberg-Marquardt algorithm of
+scipy.optimize.leastsq(), but also supports most of the optimization methods
+from scipy.optimize.  It has a number of useful enhancements, including:
 
-   version: 0.7.3
-   last update: 13-Nov-2013
+  * Using Parameter objects instead of plain floats as variables.  A Parameter
+    has a value that can be varied in the fit, fixed, have upper and/or lower
+    bounds.  It can even have a value that is constrained by an algebraic
+    expression of other Parameter values.
+
+  * Ease of changing fitting algorithms.  Once a fitting model is set up, one
+    can change the fitting algorithm without changing the objective function.
+
+  * Improved estimation of confidence intervals.  While
+    scipy.optimize.leastsq() will automatically calculate uncertainties and
+    correlations from the covariance matrix, lmfit also has functions to
+    explicitly explore parameter space to determine confidence levels even for
+    the most difficult cases.
+
+  * Improved curve-fitting with the Model class.  This which extends the
+    capabilities of scipy.optimize.curve_fit(), allowing you to turn a function
+    that models for your data into a python class that helps you parametrize
+    and fit data with that model.
+
+  * Many pre-built models for common lineshapes are included and ready to use.
+
+   version: 0.9.5
+   last update: 2016-Jul-26
    License: BSD
-   Author:  Matthew Newville <newville@cars.uchicago.edu>
-            Center for Advanced Radiation Sources,
-            The University of Chicago
+   Authors:  Matthew Newville, The University of Chicago
+             Till Stensitzki, Freie Universitat Berlin
+             Daniel B. Allen, Johns Hopkins University
+             Antonino Ingargiola, University of California, Los Angeles
 """
-__version__ = '0.7.3'
+import warnings
+import sys
+
 from .minimizer import minimize, Minimizer, MinimizerException
 from .parameter import Parameter, Parameters
 from .confidence import conf_interval, conf_interval2d
 from .printfuncs import (fit_report, ci_report,
                          report_fit, report_ci, report_errors)
 
-from .wrap      import wrap_function, make_paras_and_func
+from .model import Model, CompositeModel
+from . import models
 
-from . import models1d
 from . import uncertainties
 from .uncertainties import ufloat, correlated_values
 
-__xall__ = ['minimize', 'Minimizer', 'Parameter', 'Parameters',
-            'conf_interval', 'conf_interval2d', 'wrap_function',
-            'make_paras_and_func', 'fit_report', 'ci_report',
-            'report_errors', 'report_fit', 'report_ci', 'ufloat',
-            'correlated_values']
+
+## versioneer code
+from ._version import get_versions
+
+__version__ = get_versions()['version']
+del get_versions
+
+# PY26 Depreciation Warning
+if sys.version_info[:2] == (2, 6):
+    warnings.warn('Support for Python 2.6.x was dropped with lmfit 0.9.5')
+
+# SCIPY 0.13 Depreciation Warning
+import scipy
+scipy_major, scipy_minor, scipy_other = scipy.__version__.split('.', 2)
+
+if int(scipy_major) == 0 and int(scipy_minor) < 15:
+    warnings.warn('Support for Scipy 0.14 was dropped with lmfit 0.9.5')

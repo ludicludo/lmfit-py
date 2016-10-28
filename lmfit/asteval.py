@@ -16,8 +16,9 @@ import ast
 import math
 
 from .astutils import (FROM_PY, FROM_MATH, FROM_NUMPY, UNSAFE_ATTRS,
-                       NUMPY_RENAMES, op2func, ExceptionHolder,
-                       ReturnedNone, valid_symbol_name)
+                       LOCALFUNCS, NUMPY_RENAMES, op2func,
+                       ExceptionHolder, ReturnedNone, valid_symbol_name)
+
 HAS_NUMPY = False
 try:
     import numpy
@@ -25,34 +26,39 @@ try:
 except ImportError:
     print("Warning: numpy not available... functionality will be limited.")
 
-__version__ = '0.3'
-
 
 class Interpreter:
     """mathematical expression compiler and interpreter.
 
-  This module compiles expressions and statements to AST representation,
-  using python's ast module, and then executes the AST representation
-  using a dictionary of named object (variable, functions).
+    This module compiles expressions and statements to AST representation,
+    using python's ast module, and then executes the AST representation
+    using a dictionary of named object (variable, functions).
 
-  This then gives a restricted version of Python, being a procedural
-  language (though working on Python objects) with a simplified, flat
-  namespace (this is overcome in related implementaions). The program
-  syntax here is expected to be valid Python.
+    The result is a restricted, simplified version of Python meant for
+    numerical caclulations that is somewhat safer than 'eval' because some
+    operations (such as 'import' and 'eval') are simply not allowed.  The
+    resulting language uses a flat namespace that works on Python objects,
+    but does not allow new classes to be defined.
 
-  The following Python syntax elements are not supported:
-      Import, Exec, Lambda, Class, Global, Generators,
-      Yield, Decorators, Finally for Try-Except
+    Many parts of Python syntax are supported, including:
+        for loops, while loops, if-then-elif-else conditionals
+        try-except (including 'finally')
+        function definitions with def
+        advanced slicing:    a[::-1], array[-3:, :, ::2]
+        if-expressions:      out = one_thing if TEST else other
+        list comprehension   out = [sqrt(i) for i in values]
 
-  Many parts of Python syntax are supported, including:
-     advanced slicing:    a[::-1], array[-3:, :, ::2]
-     if-expressions:      out = one_thing if TEST else other
-     list comprehension
-     for-loops, while-loops
-     if-then-elif-else conditionals
-     try-except (but not the 'finally' variant...)
-     function definitions with def
-  """
+    The following Python syntax elements are not supported:
+        Import, Exec, Lambda, Class, Global, Generators,
+        Yield, Decorators
+
+    In addition, while many builtin functions are supported, several
+    builtin functions are missing ('eval', 'exec', and 'getattr' for
+    example) that can be considered unsafe.
+
+    If numpy is installed, many numpy functions are also imported.
+
+    """
 
     supported_nodes = ('arg', 'assert', 'assign', 'attribute', 'augassign',
                        'binop', 'boolop', 'break', 'call', 'compare',
@@ -61,8 +67,7 @@ class Interpreter:
                        'functiondef', 'if', 'ifexp', 'index', 'interrupt',
                        'list', 'listcomp', 'module', 'name', 'num', 'pass',
                        'print', 'raise', 'repr', 'return', 'slice', 'str',
-                       'subscript', 'tryexcept', 'tuple', 'unaryop',
-                       'while')
+                       'subscript', 'try', 'tuple', 'unaryop', 'while')
 
     def __init__(self, symtable=None, writer=None, use_numpy=True):
         self.writer = writer or stdout
@@ -72,31 +77,65 @@ class Interpreter:
         self.symtable = symtable
         self._interrupt = None
         self.error = []
+        self.error_msg = None
         self.expr = None
         self.retval = None
         self.lineno = 0
-        global HAS_NUMPY
-        if not use_numpy:
-            HAS_NUMPY = False
+        self.use_numpy = HAS_NUMPY and use_numpy
 
         symtable['print'] = self._printer
-        for sym in FROM_PY:
-            if sym in __builtins__:
-                symtable[sym] = __builtins__[sym]
-        for sym in FROM_MATH:
-            if hasattr(math, sym):
-                symtable[sym] = getattr(math, sym)
 
-        if HAS_NUMPY:
-            for sym in FROM_NUMPY:
-                if hasattr(numpy, sym):
-                    symtable[sym] = getattr(numpy, sym)
-            for name, sym in NUMPY_RENAMES.items():
-                if hasattr(numpy, sym):
-                    symtable[name] = getattr(numpy, sym)
+        # add python symbols
+        py_symtable = dict((sym, __builtins__[sym]) for sym in FROM_PY
+                              if sym in __builtins__)
+        symtable.update(py_symtable)
+
+        # add local symbols
+        local_symtable = dict((sym, obj) for (sym, obj) in LOCALFUNCS.items())
+        symtable.update(local_symtable)
+
+        # add math symbols
+        math_symtable = dict((sym, getattr(math, sym)) for sym in FROM_MATH
+                              if hasattr(math, sym))
+        symtable.update(math_symtable)
+
+        # add numpy symbols
+        if self.use_numpy:
+            numpy_symtable = dict((sym, getattr(numpy, sym)) for sym in FROM_NUMPY
+                              if hasattr(numpy, sym))
+            symtable.update(numpy_symtable)
+
+            npy_rename_symtable = dict((name, getattr(numpy, sym)) for name, sym
+                                   in NUMPY_RENAMES.items()
+                                   if hasattr(numpy, sym))
+            symtable.update(npy_rename_symtable)
 
         self.node_handlers = dict(((node, getattr(self, "on_%s" % node))
                                    for node in self.supported_nodes))
+
+        # to rationalize try/except try/finally for Python2.6 through Python3.3
+        self.node_handlers['tryexcept'] = self.node_handlers['try']
+        self.node_handlers['tryfinally'] = self.node_handlers['try']
+
+        self.no_deepcopy = [key for key, val in symtable.items()
+                            if (callable(val)
+                                or 'numpy.lib.index_tricks' in repr(val))]
+
+    def user_defined_symbols(self):
+        """
+        Return a set of symbols that have been added to symtable after
+        construction. I.e. the symbols from self.symtable that are not in
+        self.no_deepcopy.
+
+        Returns
+        -------
+        unique_symbols : set
+            symbols in symtable that are not in self.no_deepcopy
+        """
+        sym_in_current = set(self.symtable.keys())
+        sym_from_construction = set(self.no_deepcopy)
+        unique_symbols = sym_in_current.difference(sym_from_construction)
+        return unique_symbols
 
     def unimplemented(self, node):
         "unimplemented nodes"
@@ -116,7 +155,17 @@ class Interpreter:
         err = ExceptionHolder(node, exc=exc, msg=msg, expr=expr, lineno=lineno)
         self._interrupt = ast.Break()
         self.error.append(err)
-        raise RuntimeError(err.msg)
+        if self.error_msg is None:
+            self.error_msg = "%s in expr='%s'" % (msg, self.expr)
+        elif len(msg) > 0:
+            self.error_msg = "%s\n %s" % (self.error_msg, msg)
+        if exc is None:
+            try:
+                exc = self.error[0].exc
+            except:
+                exc = RuntimeError
+        raise exc(self.error_msg)
+
 
     # main entry point for Ast node evaluation
     #  parse:  text of statements -> ast
@@ -127,9 +176,10 @@ class Interpreter:
         self.expr = text
         try:
             return ast.parse(text)
+        except SyntaxError:
+            self.raise_exception(None, msg='Syntax Error', expr=text)
         except:
-            self.raise_exception(None, exc=SyntaxError,
-                                 msg='Syntax Error', expr=text)
+            self.raise_exception(None, msg='Runtime Error', expr=text)
 
     def run(self, node, expr=None, lineno=None, with_raise=True):
         """executes parsed Ast representation for an expression"""
@@ -173,22 +223,30 @@ class Interpreter:
         self.error = []
         try:
             node = self.parse(expr)
-        except RuntimeError:
+        except:
             errmsg = exc_info()[1]
             if len(self.error) > 0:
                 errmsg = "\n".join(self.error[0].get_error())
             if not show_errors:
-                raise RuntimeError(errmsg)
+                try:
+                    exc = self.error[0].exc
+                except:
+                    exc = RuntimeError
+                raise exc(errmsg)
             print(errmsg, file=self.writer)
             return
         try:
             return self.run(node, expr=expr, lineno=lineno)
-        except RuntimeError:
+        except:
             errmsg = exc_info()[1]
             if len(self.error) > 0:
                 errmsg = "\n".join(self.error[0].get_error())
             if not show_errors:
-                raise RuntimeError(errmsg)
+                try:
+                    exc = self.error[0].exc
+                except:
+                    exc = RuntimeError
+                raise exc(errmsg)
             print(errmsg, file=self.writer)
             return
 
@@ -293,6 +351,9 @@ class Interpreter:
                 errmsg = "invalid symbol name (reserved word?) %s" % node.id
                 self.raise_exception(node, exc=NameError, msg=errmsg)
             sym = self.symtable[node.id] = val
+            if node.id in self.no_deepcopy:
+                self.no_deepcopy.pop(node.id)
+
         elif node.__class__ == ast.Attribute:
             if node.ctx.__class__ == ast.Load:
                 msg = "cannot assign to attribute %s" % node.attr
@@ -319,21 +380,27 @@ class Interpreter:
     def on_attribute(self, node):    # ('value', 'attr', 'ctx')
         "extract attribute"
         ctx = node.ctx.__class__
-        if ctx == ast.Load:
-            sym = self.run(node.value)
-            if hasattr(sym, node.attr) and node.attr not in UNSAFE_ATTRS:
-                return getattr(sym, node.attr)
-            else:
-                obj = self.run(node.value)
-                fmt = "%s does not have attribute '%s'"
-                msg = fmt % (obj, node.attr)
-                self.raise_exception(node, exc=AttributeError, msg=msg)
-
-        elif ctx == ast.Del:
-            return delattr(sym, node.attr)
-        elif ctx == ast.Store:
+        if ctx == ast.Store:
             msg = "attribute for storage: shouldn't be here!"
             self.raise_exception(node, exc=RuntimeError, msg=msg)
+
+        sym = self.run(node.value)
+        if ctx == ast.Del:
+            return delattr(sym, node.attr)
+
+        # ctx is ast.Load
+        fmt = "cannnot access attribute '%s' for %s"
+        if node.attr not in UNSAFE_ATTRS:
+            fmt = "no attribute '%s' for %s"
+            try:
+                return getattr(sym, node.attr)
+            except AttributeError:
+                pass
+
+        # AttributeError or accessed unsafe attribute
+        obj = self.run(node.value)
+        msg = fmt % (node.attr, obj)
+        self.raise_exception(node, exc=AttributeError, msg=msg)
 
     def on_assign(self, node):    # ('targets', 'value')
         "simple assignment"
@@ -419,7 +486,7 @@ class Interpreter:
             rval = self.run(rnode)
             out = op2func(op)(lval, rval)
             lval = rval
-            if HAS_NUMPY and isinstance(out, numpy.ndarray) and out.any():
+            if self.use_numpy and isinstance(out, numpy.ndarray) and out.any():
                 break
             elif not out:
                 break
@@ -511,8 +578,8 @@ class Interpreter:
         "exception handler..."
         return (self.run(node.type), node.name, node.body)
 
-    def on_tryexcept(self, node):    # ('body', 'handlers', 'orelse')
-        "try/except blocks"
+    def on_try(self, node):    # ('body', 'handlers', 'orelse', 'finalbody')
+        "try/except/else/finally blocks"
         no_errors = True
         for tnode in node.body:
             self.run(tnode, with_raise=False)
@@ -530,8 +597,12 @@ class Interpreter:
                         for tline in hnd.body:
                             self.run(tline)
                         break
-        if no_errors:
+        if no_errors and hasattr(node, 'orelse'):
             for tnode in node.orelse:
+                self.run(tnode)
+
+        if hasattr(node, 'finalbody'):
+            for tnode in node.finalbody:
                 self.run(tnode)
 
     def on_raise(self, node):    # ('type', 'inst', 'tback')
@@ -551,31 +622,32 @@ class Interpreter:
 
     def on_call(self, node):
         "function execution"
-        #  ('func', 'args', 'keywords', 'starargs', 'kwargs')
+        #  ('func', 'args', 'keywords'. Py<3.5 has 'starargs' and 'kwargs' too)
         func = self.run(node.func)
         if not hasattr(func, '__call__') and not isinstance(func, type):
             msg = "'%s' is not callable!!" % (func)
             self.raise_exception(node, exc=TypeError, msg=msg)
 
         args = [self.run(targ) for targ in node.args]
-        if node.starargs is not None:
-            args = args + self.run(node.starargs)
+        starargs = getattr(node, 'starargs', None)
+        if starargs is not None:
+            args = args + self.run(starargs)
 
         keywords = {}
         for key in node.keywords:
             if not isinstance(key, ast.keyword):
                 msg = "keyword error in function call '%s'" % (func)
                 self.raise_exception(node, msg=msg)
-
             keywords[key.arg] = self.run(key.value)
-        if node.kwargs is not None:
-            keywords.update(self.run(node.kwargs))
+
+        kwargs = getattr(node, 'kwargs', None)
+        if kwargs is not None:
+            keywords.update(self.run(kwargs))
 
         try:
             return func(*args, **keywords)
         except:
-            self.raise_exception(node, exc=RuntimeError,
-                                 msg="Error running %s" % (func))
+            self.raise_exception(node, msg="Error running %s" % (func))
 
     def on_arg(self, node):    # ('test', 'msg')
         "arg for function definitions"
@@ -611,6 +683,8 @@ class Interpreter:
                                              args=args, kwargs=kwargs,
                                              vararg=node.args.vararg,
                                              varkws=node.args.kwarg)
+        if node.name in self.no_deepcopy:
+            self.no_deepcopy.pop(node.name)
 
 
 class Procedure(object):
@@ -623,8 +697,8 @@ class Procedure(object):
                  body=None, args=None, kwargs=None,
                  vararg=None, varkws=None):
         self.name = name
-        self.interpreter = interp
-        self.raise_exc = self.interpreter.raise_exception
+        self.__asteval__ = interp
+        self.raise_exc = self.__asteval__.raise_exception
         self.__doc__ = doc
         self.body = body
         self.argnames = args
@@ -709,22 +783,22 @@ class Procedure(object):
             msg = 'incorrect arguments for Procedure %s' % self.name
             self.raise_exc(None, msg=msg, lineno=self.lineno)
 
-        save_symtable = self.interpreter.symtable.copy()
-        self.interpreter.symtable.update(symlocals)
-        self.interpreter.retval = None
+        save_symtable = self.__asteval__.symtable.copy()
+        self.__asteval__.symtable.update(symlocals)
+        self.__asteval__.retval = None
         retval = None
 
         # evaluate script of function
         for node in self.body:
-            self.interpreter.run(node, expr='<>', lineno=self.lineno)
-            if len(self.interpreter.error) > 0:
+            self.__asteval__.run(node, expr='<>', lineno=self.lineno)
+            if len(self.__asteval__.error) > 0:
                 break
-            if self.interpreter.retval is not None:
-                retval = self.interpreter.retval
+            if self.__asteval__.retval is not None:
+                retval = self.__asteval__.retval
                 if retval is ReturnedNone:
                     retval = None
                 break
 
-        self.interpreter.symtable = save_symtable
+        self.__asteval__.symtable = save_symtable
         symlocals = None
         return retval

@@ -1,142 +1,42 @@
-===========================================================
-Getting started with Non-Linear Least-Squares Fitting
-===========================================================
+.. _parameters_chapter:
 
-The lmfit package is designed to provide a simple way to build complex
-fitting models and apply them to real data.  This chapter describes how to
-set up and perform simple fits.  Some basic knowledge of Python, Numpy, and
-modeling data are assumed.
+.. module:: lmfit.parameter
 
-To do a least-squares fit of a model to data, or for a host of other
-optimization problems, the main task is to write an *objective function*
-that takes the values of the fitting variables and calculates either a
-scalar value to be minimized or an array of values that is to be minimized
-in the least-squares sense.  For many data fitting processes, the
-least-squares approach is used, and the objective function should
-return an array of (data-model), perhaps scaled by some weighting factor
-such as the inverse of the uncertainty in the data.  For such a problem,
-the chi-square (:math:`\chi^2`) statistic is often defined as:
+================================================
+:class:`Parameter`  and :class:`Parameters`
+================================================
 
+This chapter describes :class:`Parameter` objects which is the key concept
+of lmfit.
 
-.. math::
+A :class:`Parameter` is the quantity to be optimized in all minimization
+problems, replacing the plain floating point number used in the
+optimization routines from :mod:`scipy.optimize`.  A :class:`Parameter` has
+a value that can be varied in the fit or have a fixed value, have upper
+and/or lower bounds.  It can even have a value that is constrained by an
+algebraic expression of other Parameter values.  Since :class:`Parameters`
+live outside the core optimization routines, they can be used in **all**
+optimization routines from :mod:`scipy.optimize`.  By using
+:class:`Parameter` objects instead of plain variables, the objective
+function does not have to be modified to reflect every change of what is
+varied in the fit.  This simplifies the writing of models, allowing general
+models that describe the phenomenon to be written, and gives the user more
+flexibility in using and testing variations of that model.
 
- \chi^2 =  \sum_i^{N} \frac{[y^{\rm meas}_i - y_i^{\rm model}({\bf{v}})]^2}{\epsilon_i^2}
+Whereas a :class:`Parameter` expands on an individual floating point
+variable, the optimization methods need an ordered group of floating point
+variables.  In the :mod:`scipy.optimize` routines this is required to be a
+1-dimensional numpy ndarray.  For lmfit, where each :class:`Parameter` has
+a name, this is replaced by a :class:`Parameters` class, which works as an
+ordered dictionary of :class:`Parameter` objects, with a few additional
+features and methods.  That is, while the concept of a :class:`Parameter`
+is central to lmfit, one normally creates and interacts with a
+:class:`Parameters` instance that contains many :class:`Parameter` objects.
+A table of parameter values, bounds and other attributes can be
+printed using :meth:`Parameters.pretty_print`.
 
-where :math:`y_i^{\rm meas}` is the set of measured data, :math:`y_i^{\rm
-model}({\bf{v}})` is the model calculation, :math:`{\bf{v}}` is the set of
-variables in the model to be optimized in the fit, and :math:`\epsilon_i`
-is the estimated uncertainty in the data.
-
-In a traditional non-linear fit, one writes an objective function that takes the
-variable values and calculates the residual :math:`y^{\rm meas}_i -
-y_i^{\rm model}({\bf{v}})`, or the residual scaled by the data
-uncertainties, :math:`[y^{\rm meas}_i - y_i^{\rm
-model}({\bf{v}})]/{\epsilon_i}`, or some other weighting factor.  As a
-simple example, one might write an objective function like this::
-
-    def residual(vars, x, data, eps_data):
-        amp = vars[0]
-        phaseshift = vars[1]
-	freq = vars[2]
-        decay = vars[3]
-
-	model = amp * sin(x * freq  + phaseshift) * exp(-x*x*decay)
-
-        return (data-model)/eps_data
-
-To perform the minimization with scipy, one would do::
-
-    from scipy.optimize import leastsq
-    vars = [10.0, 0.2, 3.0, 0.007]
-    out = leastsq(residual, vars, args=(x, data, eps_data))
-
-Though it is wonderful to be able to use python for such optimization
-problems, and the scipy library is robust and easy to use, the approach
-here is not terribly different from how one would do the same fit in C or
-Fortran.
-
-
-.. _parameters-label:
-
-Using :class:`Parameters` instead of Variables
-=============================================================
-
-As described above, there are several practical challenges in doing
-least-squares fits and other optimizations with the traditional
-implementation (Fortran, scipy.optimize.leastsq, and most other) in which a
-list of fitting variables to the function to be minimized.  These
-challenges include:
-
-  a) The user has to keep track of the order of the variables, and their
-     meaning -- vars[2] is the frequency, and so on.
-
-  b) If the user wants to fix a particular variable (*not* vary it in the fit),
-     the residual function has to be altered.  While reasonable for simple
-     cases, this quickly becomes significant work for more complex models,
-     and greatly complicates modeling for people not intimately familiar
-     with the code.
-
-  c) There is no simple, robust way to put bounds on values for the
-     variables, or enforce mathematical relationships between the
-     variables.
-
-The lmfit module is designed to void these shortcomings.
-
-The main idea of lmfit is to expand a numerical variable with a
-:class:`Parameter`, which have more attributes than simply their value.
-Instead of a pass a list of numbers to the function to minimize, you create
-a :class:`Parameters` object, add parameters to this object, and pass along
-this object to your function to be minimized.  With this transformation,
-the above example would be translated to look like::
-
-    from lmfit import minimize, Parameters
-
-    def residual(params, x, data, eps_data):
-        amp = params['amp'].value
-        pshift = params['phase'].value
-	freq = params['frequency'].value
-        decay = params['decay'].value
-
-	model = amp * sin(x * freq  + pshift) * exp(-x*x*decay)
-
-        return (data-model)/eps_data
-
-    params = Parameters()
-    params.add('amp', value=10)
-    params.add('decay', value=0.007)
-    params.add('phase', value=0.2)
-    params.add('frequency', value=3.0)
-
-    out = minimize(residual, params, args=(x, data, eps_data))
-
-
-So far, this simply looks like it replaced a list of values with a
-dictionary, accessed by name.  But each of the named :class:`Parameter` in
-the :class:`Parameters` object hold additional attributes to modify the
-value during the fit.  For example, Parameters can be fixed or bounded, and
-this can be done when being defined::
-
-    params = Parameters()
-    params.add('amp', value=10, vary=False)
-    params.add('decay', value=0.007, min=0.0)
-    params.add('phase', value=0.2)
-    params.add('frequency', value=3.0, max=10)
-
-or after being defined by setting the corresponding attributes::
-
-    params['amp'].vary = False
-    params['decay'].min = 0.10
-
-In either case, the fit will *not* vary the amplitude parameter.  In
-addition, a lower bound will be placed on the decay factor, and upper
-bounds placed on two parameters. Importantly, our function to be minimized
-remains unchanged.
-
-An important point here is that the `params` object can be copied and
-modified to make many user-level changes to the model and fitting process.
-Of course, most of the information about how your data is modeled goes into
-the fitting function, but the approach here allows some external control as
-well.
+Finally, the objective functions you write for lmfit will take an instance of
+:class:`Parameters` as its first argument.
 
 
 The :class:`Parameter` class
@@ -144,47 +44,90 @@ The :class:`Parameter` class
 
 .. class:: Parameter(name=None[, value=None[, vary=True[, min=None[, max=None[, expr=None]]]]])
 
-   create a Parameter object.  These are the fundamental extension of a fit
-   variable within lmfit, but you will probably create most of these with
-   the :class:`Parameters` class.
+    create a Parameter object.
 
-   :param name: parameter name
-   :type name: ``None`` or string -- will be overwritten during fit if ``None``.
-   :param value: the numerical value for the parameter
-   :param vary:  whether to vary the parameter or not.
-   :type vary:  boolean (``True``/``False``)
-   :param min:  lower bound for value (``None`` = no lower bound).
-   :param max:  upper bound for value (``None`` = no upper bound).
-   :param expr:  mathematical expression to use to evaluate value during fit.
-   :type expr: ``None`` or string
+    :param name: parameter name
+    :type name: ``None`` or string -- will be overwritten during fit if ``None``.
+    :param value: the numerical value for the parameter
+    :param vary:  whether to vary the parameter or not.
+    :type vary:  boolean (``True``/``False``) [default ``True``]
+    :param min:  lower bound for value (``None`` = no lower bound).
+    :param max:  upper bound for value (``None`` = no upper bound).
+    :param expr:  mathematical expression to use to evaluate value during fit.
+    :type expr: ``None`` or string
 
+    Each of these inputs is turned into an attribute of the same name.
 
-Each of these inputs is turned into an attribute of the same name.   As
-above, one hands a dictionary of Parameters to the fitting routines.   The
-name for the Parameter will be set to be consistent
+    After a fit, a Parameter for a fitted variable (that is with ``vary =
+    True``) may have its :attr:`value` attribute to hold the best-fit value.
+    Depending on the success of the fit and fitting algorithm used, it may also
+    have attributes :attr:`stderr` and :attr:`correl`.
 
-After a fit, a Parameter for a fitted variable (ie with vary = ``True``)
-will have the :attr:`value` attribute holding the best-fit value, and may
-(depending on the success of the fit) have obtain additional attributes.
+    .. attribute:: stderr
 
-.. attribute:: stderr
+       the estimated standard error for the best-fit value.
 
-   the estimated standard error for the best-fit value.
+    .. attribute:: correl
 
-.. attribute:: correl
+       a dictionary of the correlation with the other fitted variables in the
+       fit, of the form::
 
-   a dictionary of the correlation with the other fitted variables in the
-   fit, of the form::
+       {'decay': 0.404, 'phase': -0.020, 'frequency': 0.102}
 
-   {'decay': 0.404, 'phase': -0.020, 'frequency': 0.102}
+    See :ref:`bounds_chapter` for details on the math used to implement the
+    bounds with :attr:`min` and :attr:`max`.
 
-For details of the use of the bounds :attr:`min` and :attr:`max`,
-see :ref:`parameter-bounds-label`.
+    The :attr:`expr` attribute can contain a mathematical expression that will
+    be used to compute the value for the Parameter at each step in the fit.
+    See :ref:`constraints_chapter` for more details and examples of this
+    feature.
 
-The :attr:`expr` attribute can contain a mathematical expression that will
-be used to compute the value for the Parameter at each step in the fit.
-See :ref:`math-constraints-label` for more details and examples of this
-feature.
+    .. index:: Removing a Constraint Expression
+
+    .. method:: set(value=None[, vary=None[, min=None[, max=None[, expr=None]]]])
+
+       set or update a Parameters value or other attributes.
+
+       :param name:  parameter name
+       :param value: the numerical value for the parameter
+       :param vary:  whether to vary the parameter or not.
+       :param min:   lower bound for value
+       :param max:   upper bound for value
+       :param expr:  mathematical expression to use to evaluate value during fit.
+
+    Each argument of :meth:`set` has a default value of ``None``, and will
+    be set only if the provided value is not ``None``.  You can use this to
+    update some Parameter attribute without affecting others, for example::
+
+	p1 = Parameter('a', value=2.0)
+	p2 = Parameter('b', value=0.0)
+	p1.set(min=0)
+	p2.set(vary=False)
+
+    to set a lower bound, or to set a Parameter as have a fixed value.
+
+    Note that to use this approach to lift a lower or upper bound, doing::
+
+	p1.set(min=0)
+	.....
+	# now lift the lower bound
+	p1.set(min=None)   # won't work!  lower bound NOT changed
+
+    won't work -- this will not change the current lower bound.  Instead
+    you'll have to use ``np.inf`` to remove a lower or upper bound::
+
+	# now lift the lower bound
+	p1.set(min=-np.inf)   # will work!
+
+    Similarly, to clear an expression of a parameter, you need to pass an
+    empty string, not ``None``.  You also need to give a value and
+    explicitly tell it to vary::
+
+	p3 = Parameter('c', expr='(a+b)/2')
+	p3.set(expr=None)     # won't work!  expression NOT changed
+
+	# remove constraint expression
+	p3.set(value=1.0, vary=True, expr='')  # will work!  parameter now unconstrained
 
 
 The :class:`Parameters` class
@@ -192,54 +135,106 @@ The :class:`Parameters` class
 
 .. class:: Parameters()
 
-   create a Parameters object.  This is little more than a fancy
-   dictionary, with the restrictions that
+   create a Parameters object.  This is little more than a fancy ordered
+   dictionary, with the restrictions that:
 
-   1. keys must be valid Python symbol names (so that they can be used in
-      expressions of mathematical constraints).  This means the names must
+   1. keys must be valid Python symbol names, so that they can be used in
+      expressions of mathematical constraints.  This means the names must
       match ``[a-z_][a-z0-9_]*``  and cannot be a Python reserved word.
 
    2. values must be valid :class:`Parameter` objects.
 
+   Two methods are provided for convenient initialization of a :class:`Parameters`,
+   and one for extracting :class:`Parameter` values into a plain dictionary.
 
-   Two methods for provided for convenience of initializing Parameters.
+    .. method:: add(name[, value=None[, vary=True[, min=None[, max=None[, expr=None]]]]])
 
-.. method:: add(name[, value=None[, vary=True[, min=None[, max=None[, expr=None]]]]])
+       add a named parameter.  This creates a :class:`Parameter`
+       object associated with the key `name`, with optional arguments
+       passed to :class:`Parameter`::
 
-   add a named parameter.  This simply creates a :class:`Parameter`
-   object associated with the key `name`, with optional arguments
-   passed to :class:`Parameter`::
+	 p = Parameters()
+	 p.add('myvar', value=1, vary=True)
 
-     p = Parameters()
-     p.add('myvar', value=1, vary=True)
+    .. method:: add_many(self, paramlist)
 
-.. method:: add_many(self, paramlist)
+       add a list of named parameters.  Each entry must be a tuple
+       with the following entries::
 
-   add a list of named parameters.  Each entry must be a tuple
-   with the following entries::
+	    name, value, vary, min, max, expr
 
-        name, value, vary, min, max, expr
+       This method is somewhat rigid and verbose (no default values), but can
+       be useful when initially defining a parameter list so that it looks
+       table-like::
 
-   That is, this method is somewhat rigid and verbose (no default values),
-   but can be useful when initially defining a parameter list so that it
-   looks table-like::
+	 p = Parameters()
+	 #           (Name,  Value,  Vary,   Min,  Max,  Expr)
+	 p.add_many(('amp1',    10,  True, None, None,  None),
+		    ('cen1',   1.2,  True,  0.5,  2.0,  None),
+		    ('wid1',   0.8,  True,  0.1, None,  None),
+		    ('amp2',   7.5,  True, None, None,  None),
+		    ('cen2',   1.9,  True,  1.0,  3.0,  None),
+		    ('wid2',  None, False, None, None, '2*wid1/3'))
 
-     p = Parameters()
-     #           (Name,  Value,  Vary,   Min,  Max,  Expr)
-     p.add_many(('amp1',    10,  True, None, None,  None),
-                ('cen1',   1.2,  True,  0.5,  2.0,  None),
-                ('wid1',   0.8,  True,  0.1, None,  None),
-                ('amp2',   7.5,  True, None, None,  None),
-                ('cen2',   1.9,  True,  1.0,  3.0,  None),
-                ('wid2',  None, False, None, None, '2*wid1/3'))
+
+    .. automethod:: Parameters.pretty_print
+
+    .. method:: valuesdict()
+
+       return an ordered dictionary of name:value pairs with the
+       Paramater name as the key and Parameter value as value.
+
+       This is distinct from the :class:`Parameters` itself, as the dictionary
+       values are not :class:`Parameter` objects, just the :attr:`value`.
+       Using :meth:`valuesdict` can be a very convenient way to get updated
+       values in a objective function.
+
+    .. method:: dumps(**kws)
+
+       return a JSON string representation of the :class:`Parameter` object.
+       This can be saved or used to re-create or re-set parameters, using the
+       :meth:`loads` method.
+
+       Optional keywords are sent :py:func:`json.dumps`.
+
+    .. method:: dump(file, **kws)
+
+       write a JSON representation of the :class:`Parameter` object to a file
+       or file-like object in `file` -- really any object with a :meth:`write`
+       method.  Optional keywords are sent :py:func:`json.dumps`.
+
+    .. method:: loads(sval, **kws)
+
+       use a JSON string representation of the :class:`Parameter` object in
+       `sval` to set all parameter settings. Optional keywords are sent
+       :py:func:`json.loads`.
+
+    .. method:: load(file, **kws)
+
+       read and use a JSON string representation of the :class:`Parameter`
+       object from a file or file-like object in `file` -- really any object
+       with a :meth:`read` method.  Optional keywords are sent
+       :py:func:`json.loads`.
 
 
 Simple Example
 ==================
 
-Putting it all together, a simple example of using a dictionary of
-:class:`Parameter` objects and :func:`minimize` might look like this:
+Using :class:`~lmfit.parameter.Parameters` and :func:`~lmfit.minimizer.minimize`
+function (discussed in the next chapter) might look like this:
 
-.. literalinclude:: ../tests/simple.py
+.. literalinclude:: ../examples/doc_basic.py
 
 
+Here, the objective function explicitly unpacks each Parameter value.  This
+can be simplified using the :class:`Parameters` :meth:`valuesdict` method,
+which would make the objective function ``fcn2min`` above look like::
+
+    def fcn2min(params, x, data):
+	""" model decaying sine wave, subtract data"""
+	v = params.valuesdict()
+
+	model = v['amp'] * np.sin(x * v['omega'] + v['shift']) * np.exp(-x*x*v['decay'])
+	return model - data
+
+The results are identical, and the difference is a stylistic choice.
